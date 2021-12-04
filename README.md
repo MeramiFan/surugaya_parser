@@ -7,6 +7,7 @@ General: added ability to search by "brand" or circle name. Improved handling of
 
 Not updated: KaitoriSearch, KaitoriSearchDetail
 
+About requirements: urllib3==1.24.1 is specified. A more recent version (1.26.7 was tested) changed something which results in an endless redirect loop until exception is thrown.
 
 Get list of search results (example in example.py)
 

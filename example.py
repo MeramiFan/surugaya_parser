@@ -52,9 +52,9 @@ for Item in pg.items:
     pgd = SearchDetailShort(s, code)
     release_date = pgd.item.release_date
     model_number = pgd.item.model_number
-    if (release_date == None):
+    if (release_date is None):
         release_date = 'Unknown'
-    elif (model_number == None):
+    if (model_number is None):
         model_number = 'Unknown'
     print('[' + release_date + '] ' + pgd.item.brand + ' - ' + pgd.item.title + '{' + model_number + '}')
 

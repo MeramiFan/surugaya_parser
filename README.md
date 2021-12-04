@@ -1,7 +1,10 @@
 # surugaya_parser
 Updated version following updates to suruga-ya.jp around April 2021. Repaired and revised functionality.
+
 Functions updated: Search, SearchDetail. Function added: SearchDetailShort. Updated parsing for compatibility with the new page structure.
+
 General: added ability to search by "brand" or circle name. Improved handling of title strings and URL encoding.
+
 Not updated: KaitoriSearch, KaitoriSearchDetail
 
 
@@ -22,5 +25,7 @@ pprint(pgd.item)
 ```
 
 Get specific attributes from circle or keyword search. The main update: SearchDetailShort.
-Returns: title, circle, release date, catalog
+
+Returns: title, circle, release date, catalog.
+
 Format: [release_date] title - circle {catalog}

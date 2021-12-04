@@ -1,1 +1,1 @@
-from surugaya_parser.page import Search, SearchDetail, KaitoriSearch, KaitoriSearchDetail
+from surugaya_parser.page import Search, SearchDetail, SearchDetailShort, KaitoriSearch, KaitoriSearchDetail

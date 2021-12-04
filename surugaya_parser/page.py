@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 from requests import session
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from collections import namedtuple
 from time import sleep
 from bs4 import BeautifulSoup
 
 Item = namedtuple('Item', 'title code category brand release_date price price_normal price_teika')
-ItemDetail = namedtuple('ItemDetail', 'title code category release_date price_teika brand model_number picture')
+ItemDetail = namedtuple('ItemDetail', 'title code category release_date price_teika brand model_number')
+ItemDS = namedtuple('ItemDS', 'title brand release_date model_number')
 
 KaitoriItem = namedtuple('KaitoriItem', 'title code category price')
 KaitoriItemDetail = namedtuple('KaitoriItemDetail',
@@ -15,8 +16,8 @@ KaitoriItemDetail = namedtuple('KaitoriItemDetail',
 ENCODING = 'utf-8'
 
 
-def _get(session: session(), url: str, params: dict):
-    _url = url + '?' + urlencode(params)
+def _get(session: session(), url: str, params: dict, brand: str):
+    _url = url + '?' + urlencode(params, safe='[,],=') + '&restrict[]=brand=' + quote(str(brand))
     _html = session.get(_url)
     _html.encoding = ENCODING
     return _html
@@ -25,13 +26,14 @@ def _get(session: session(), url: str, params: dict):
 class Search:
     url = "https://www.suruga-ya.jp/search"
 
-    def __init__(self, session: session(), category: str = '', search_word: str = '', adult_s: int = 1,
+    def __init__(self, session: session(), category: str = '', search_word: str = '', brand: str = '', inStock: str = 'On', adult_s: int = 1,
                  is_marketplace: int = 0, page: int = None):
         """
         検索一覧ページの内容を取得する
         :param session:
         :param category:
         :param search_word:
+        :param inStock:
         :param adult_s:
         :param is_marketplace:
         :param page:
@@ -39,8 +41,11 @@ class Search:
         self.session = session
         self.category = category
         self.search_word = search_word
+        self.brand = brand
+        self.inStock = inStock
         self.adult_s = adult_s
         self.is_marketplace = is_marketplace
+        self.page = page
 
         self.items = []
 
@@ -69,10 +74,11 @@ class Search:
         :param page:
         :return:
         """
-        params = {'category': self.category, 'search_word': self.search_word, 'adult_s': self.adult_s,
+        params = {'category': self.category, 'search_word': self.search_word, 'inStock': self.inStock, 'adult_s': self.adult_s,
                   'is_marketplace': self.is_marketplace, 'page': page}
+        brand = self.brand
 
-        html = _get(self.session, Search.url, params)
+        html = _get(self.session, Search.url, params, brand)
 
         items = []
 
@@ -94,8 +100,11 @@ class Search:
 
             brand = item_soup.find_all('p', class_='brand')[0].text
 
-            release_date = item_soup.find_all('p', class_='release_date')[0].text
-            release_date = release_date.replace('発売日：', '')
+            try:
+                release_date = item_soup.find_all('p', class_='release_date')[0].text
+                release_date = release_date.replace('発売日：', '')
+            except IndexError:
+                release_date = None
 
             try:
                 price = item_soup.find_all('p', class_='price')[0].text
@@ -148,28 +157,103 @@ class SearchDetail:
         :return:
         """
         params = {}
+        brand = None
 
-        html = _get(self.session, SearchDetail.url + code, params)
+        html = _get(self.session, SearchDetail.url + code, params, brand)
 
         soup = BeautifulSoup(html.text, 'html.parser')
 
-        category = soup.find('span', class_='mgnL0').text
-
-        title = soup.find('h2', id='item_title').text
-        title = title.replace(category, '')
+        title_block = soup.find('h1', class_='h1_title_product').text
+        prep = title_block.split('　')
+        category = prep[0]
+        category = category.strip()
+        title = prep[1].rsplit('/', 1)[0]
         title = title.strip()
 
         code = soup.find('td', id='proid').text
         code = code.replace('中古 ：', '').strip()
 
-        elements_td = soup.find_all('td', class_='t_contents')
-        release_date = elements_td[1].text.strip()
-        price_teika = elements_td[2].text.strip()
-        brand = elements_td[3].text.strip()
-        model_number = elements_td[4].text.strip()
-        picture = elements_td[6].text.strip()
+        table = soup.find('table', class_='table table-striped tbl_product_info')
+        th_elements = table.find_all('th')
+        td_elements = table.find_all('td')
+        brand = None
+        release_date = None
+        price_teika = None
+        model_number = None
 
-        return ItemDetail(title, code, category, release_date, price_teika, brand, model_number, picture)
+        for item in th_elements:
+            if (item.text.strip() == 'メーカー'):
+                i = th_elements.index(item)
+                brand = td_elements[i].text.strip()
+            elif (item.text == '発売日'):
+                i = th_elements.index(item)
+                release_date = td_elements[i].text.strip()
+            elif (item.text == '定価'):
+                i = th_elements.index(item)
+                price_teika = td_elements[i].text.strip()
+            elif (item.text.strip() == '型番'):
+                i = th_elements.index(item)
+                model_number = td_elements[i].text.strip()
+
+        return ItemDetail(title, code, category, release_date, price_teika, brand, model_number)
+
+
+class SearchDetailShort:
+    url = "https://www.suruga-ya.jp/product/detail/"
+
+    def __init__(self, session: session(), code: str):
+        """
+        検索詳細ページの内容を取得する
+        :param session:
+        :param code:
+        """
+        self.session = session
+        self.code = code
+
+        self.item = self._parse_search_detail_short_page(self.code)
+
+    def _parse_search_detail_short_page(self, code: str) -> ItemDS:
+        """
+        検索詳細ページの内容をパースする
+        :param code:
+        :return:
+        """
+        params = {}
+        brand = None
+
+        html = _get(self.session, SearchDetailShort.url + code, params, brand)
+
+        soup = BeautifulSoup(html.text, 'html.parser')
+
+        title_block = soup.find('h1', class_='h1_title_product').text
+        prep = title_block.split('　')
+        category = prep[0]
+        category = category.strip()
+        title = prep[1].rsplit('/', 1)[0]
+        title = title.strip()
+
+        code = soup.find('td', id='proid').text
+        code = code.replace('中古 ：', '').strip()
+
+        table = soup.find('table', class_='table table-striped tbl_product_info')
+        th_elements = table.find_all('th')
+        td_elements = table.find_all('td')
+        brand = None
+        release_date = None
+        model_number = None
+
+        for item in th_elements:
+            if (item.text.strip() == 'メーカー'):
+                i = th_elements.index(item)
+                brand = td_elements[i].text.strip()
+            elif (item.text == '発売日'):
+                i = th_elements.index(item)
+                release_date = td_elements[i].text.strip()
+            elif (item.text.strip() == '型番'):
+                i = th_elements.index(item)
+                model_number = td_elements[i].text.strip()
+
+        return ItemDS(title, brand, release_date, model_number)
 
 
 class KaitoriSearch:
